@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta name="google" content="notranslate">
+    <title>מסע בירושלים - התחברות וניהול</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel (for JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA57GzEJFICc77_Uey2oxiMLcsJaduM828",
+            authDomain: "jerusalem-game.firebaseapp.com",
+            projectId: "jerusalem-game",
+            storageBucket: "jerusalem-game.firebasestorage.app",
+            messagingSenderId: "346725076237",
+            appId: "1:346725076237:web:6c5d6bd6cd2d18038c7444"
+        };
+
+        window.FirebaseApp = null;
+        window.FirebaseAuth = null;
+        window.FirebaseDB = null;
+
+        try {
+             if (Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey) {
+                window.FirebaseApp = initializeApp(firebaseConfig);
+                window.FirebaseAuth = getAuth(window.FirebaseApp);
+                window.FirebaseDB = getFirestore(window.FirebaseApp);
+             }
+        } catch(e) {
+            console.error("שגיאה בחיבור ל-Firebase", e);
+        }
+
+        window.signInAnonymously = signInAnonymously;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.getDoc = getDoc;
+    </script>
+
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f5f5f4; margin: 0; padding: 0; }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        .animate-bounce-slow { animation: bounce 2s infinite; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .map-pin { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .map-pin:hover { transform: scale(1.15) translateY(-5px); z-index: 50; }
+        
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        
+        .bg-stars { background-image: url('https://www.transparenttextures.com/patterns/stardust.png'); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* --- אנימציות חגיגה --- */
+        @keyframes popIn { 0% { transform: scale(0) rotate(-10deg); opacity: 0; } 70% { transform: scale(1.2) rotate(5deg); } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-120px) scale(0.5); opacity: 0; } }
+        @keyframes starBurst { 0% { transform: scale(0) rotate(0deg); opacity: 1; } 100% { transform: scale(2.5) rotate(180deg); opacity: 0; } }
+        @keyframes confettiFall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
+        @keyframes levelUp { 0% { transform: scale(0.5) translateY(30px); opacity: 0; } 50% { transform: scale(1.15) translateY(-10px); opacity: 1; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+        @keyframes shimmer { 0%,100% { box-shadow: 0 0 10px 2px rgba(251,191,36,0.4); } 50% { box-shadow: 0 0 30px 8px rgba(251,191,36,0.9); } }
+        @keyframes wrongShake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
+
+        .animate-pop-in { animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .animate-float-up { animation: floatUp 1.2s ease-out forwards; }
+        .animate-star-burst { animation: starBurst 0.8s ease-out forwards; }
+        .animate-level-up { animation: levelUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .animate-shimmer { animation: shimmer 1.5s ease-in-out infinite; }
+        .animate-wrong-shake { animation: wrongShake 0.4s ease-in-out; }
+
+        .confetti-piece { position: fixed; width: 10px; height: 10px; top: -20px; animation: confettiFall linear forwards; z-index: 9999; pointer-events: none; border-radius: 2px; }
+    </style>
+</head>
+<body class="selection:bg-amber-200 text-stone-800" translate="no">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- סאונדים ---
+        const SOUNDS = {
+            correct: 'https://actions.google.com/sounds/v1/cartoon/clank_and_wobble.ogg', 
+            wrong: 'https://actions.google.com/sounds/v1/cartoon/slip_and_crash.ogg', 
+            flip: 'https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg', 
+            suspense: 'https://actions.google.com/sounds/v1/science_fiction/power_down.ogg', 
+            win: 'https://actions.google.com/sounds/v1/cartoon/trumpet_basic.ogg',
+            tada: 'https://actions.google.com/sounds/v1/cartoon/concussive_hit_gong.ogg',
+            levelup: 'https://actions.google.com/sounds/v1/cartoon/concussive_hit_gong.ogg',
+            mapopen: 'https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg',
+            // --- קולות מיוחדים למיליונר ---
+            mill_answer_lock: 'https://actions.google.com/sounds/v1/science_fiction/alien_beam.ogg',
+            mill_correct: 'https://actions.google.com/sounds/v1/cartoon/clank_and_wobble.ogg',
+            mill_wrong: 'https://actions.google.com/sounds/v1/impacts/glass_smash_and_tinkle.ogg',
+            mill_win: 'https://actions.google.com/sounds/v1/cartoon/trumpet_basic.ogg',
+            mill_tick: 'https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg',
+            // --- קול למשחק התאמה ---
+            match_correct: 'https://actions.google.com/sounds/v1/cartoon/clank_and_wobble.ogg',
+            match_wrong: 'https://actions.google.com/sounds/v1/cartoon/slip_and_crash.ogg'
+        };
+
+        const playSound = (type) => {
+            try {
+                const audio = new Audio(SOUNDS[type]);
+                audio.volume = 0.7;
+                audio.play();
+            } catch(e) { console.log("Sound play error: ", e); }
+        };
+
+        // --- מנהל מוזיקת רקע ---
+        let bgMusicAudio = null;
+        const playBgMusic = (url, volume = 0.18) => {
+            stopBgMusic();
+            try {
+                bgMusicAudio = new Audio(url);
+                bgMusicAudio.loop = true;
+                bgMusicAudio.volume = volume;
+                bgMusicAudio.play().catch(() => {});
+            } catch(e) {}
+        };
+        const stopBgMusic = () => {
+            if (bgMusicAudio) {
+                bgMusicAudio.pause();
+                bgMusicAudio.currentTime = 0;
+                bgMusicAudio = null;
+            }
+        };
+
+        // --- קונפטי ---
+        const CONFETTI_COLORS = ['#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#ec4899','#fbbf24'];
+        const launchConfetti = (count = 60) => {
+            for (let i = 0; i < count; i++) {
+                setTimeout(() => {
+                    const el = document.createElement('div');
+                    el.className = 'confetti-piece';
+                    el.style.left = Math.random() * 100 + 'vw';
+                    el.style.backgroundColor = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+                    el.style.width = (6 + Math.random() * 10) + 'px';
+                    el.style.height = (6 + Math.random() * 10) + 'px';
+                    el.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+                    el.style.animationDelay = (Math.random() * 0.5) + 's';
+                    el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+                    document.body.appendChild(el);
+                    setTimeout(() => el.remove(), 4000);
+                }, i * 30);
+            }
+        };
+
+        // --- פופ-אפ הצלחה ---
+        function SuccessPopup({ message, emoji, onDone }) {
+            useEffect(() => {
+                launchConfetti(50);
+                const t = setTimeout(onDone, 2200);
+                return () => clearTimeout(t);
+            }, []);
+            return (
+                <div className="fixed inset-0 flex items-center justify-center z-[9998] pointer-events-none">
+                    <div className="animate-pop-in bg-white rounded-3xl shadow-2xl px-10 py-8 flex flex-col items-center border-4 border-amber-400">
+                        <div className="text-7xl mb-3 animate-star-burst">{emoji}</div>
+                        <div className="text-2xl font-black text-amber-700 text-center">{message}</div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- פופ-אפ עלייה בשלב (מיליונר) ---
+        function LevelUpPopup({ level, prize, onDone }) {
+            useEffect(() => {
+                launchConfetti(30);
+                const t = setTimeout(onDone, 2000);
+                return () => clearTimeout(t);
+            }, []);
+            return (
+                <div className="fixed inset-0 flex items-center justify-center z-[9998] pointer-events-none">
+                    <div className="animate-level-up bg-gradient-to-br from-amber-400 to-yellow-300 rounded-3xl shadow-2xl px-10 py-8 flex flex-col items-center border-4 border-amber-600">
+                        <div className="text-5xl mb-2">⬆️</div>
+                        <div className="text-3xl font-black text-amber-900">שלב {level}!</div>
+                        <div className="text-xl font-bold text-amber-800 mt-1">₪{prize?.toLocaleString()} על השולחן</div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- פונקציות עזר ---
+        
+        // תיקון קריסת האייקונים של React
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const spanRef = useRef(null);
+            useEffect(() => {
+                if (spanRef.current && window.lucide) {
+                    spanRef.current.innerHTML = `<i data-lucide="${name}" style="width: ${size}px; height: ${size}px;"></i>`;
+                    window.lucide.createIcons({ root: spanRef.current });
+                }
+            }, [name, size]);
+            return <span ref={spanRef} className={`inline-flex items-center justify-center ${className}`}></span>;
+        };
+
+        // פונקציה להמרת קישור יוטיוב רגיל לקישור הטמעה (Embed)
+        const getEmbedUrl = (url) => {
+            if (!url) return null;
+            let videoId = '';
+            if (url.includes('youtube.com/watch?v=')) {
+                videoId = url.split('v=')[1].split('&')[0];
+            } else if (url.includes('youtu.be/')) {
+                videoId = url.split('youtu.be/')[1].split('?')[0];
+            } else if (url.includes('youtube.com/embed/')) {
+                return url; 
+            }
+            return videoId ? `https://www.youtube.com/embed/${videoId}?rel=0` : url;
+        };
+
+        const parseCSV = (str) => {
+            const arr = [];
+            let quote = false;
+            for (let row = 0, col = 0, c = 0; c < str.length; c++) {
+                let cc = str[c], nc = str[c+1];
+                arr[row] = arr[row] || [];
+                arr[row][col] = arr[row][col] || '';
+                if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+                if (cc === '"') { quote = !quote; continue; }
+                if (cc === ',' && !quote) { ++col; continue; }
+                if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+                if (cc === '\r' && !quote) { ++row; col = 0; continue; }
+                arr[row][col] += cc;
+            }
+            return arr.filter(row => row.some(cell => cell.trim() !== ''));
+        };
+
+        const compressImage = (file, callback) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = event => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1200;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    callback(canvas.toDataURL('image/jpeg', 0.6));
+                }
+            }
+        };
+
+        const shuffleArray = (array) => {
+            let shuffled = [...array];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled;
+        };
+
+        // --- נתוני ברירת מחדל ---
+        const defaultStations = [
+            { id: '1', name: 'החומות', type: 'quiz', description: 'חידון על חומות ירושלים', videoUrl: '', x: 20, y: 50, portraitX: 20, portraitY: 30, backgroundUrl: null, isUnlocked: true, data: [{ q: 'מי בנה את חומות ירושלים הנוכחיות?', options: ['הורדוס', 'סולימאן המפואר', 'דוד המלך', 'הבריטים'], answer: 'סולימאן המפואר' }] },
+            { id: '2', name: 'שערי העיר', type: 'memory', description: 'התאם בין חלקי השמות', videoUrl: '', x: 35, y: 40, portraitX: 50, portraitY: 45, backgroundUrl: null, isUnlocked: false, data: [{ pair1: 'שער', pair2: 'האריות' }, { pair1: 'שער', pair2: 'האשפות' }, { pair1: 'שער', pair2: 'יפו' }, { pair1: 'שער', pair2: 'שכם' }] },
+            { id: '3', name: 'עיר דוד', type: 'quiz', description: 'חידון עיר דוד', videoUrl: '', x: 50, y: 60, portraitX: 50, portraitY: 65, backgroundUrl: null, isUnlocked: false, data: [{ q: 'מה היה מקור המים המרכזי של עיר דוד?', options: ['מעיין הגיחון', 'בריכת הסולטן', 'נהר הירדן', 'הים התיכון'], answer: 'מעיין הגיחון' }] },
+            { id: '4', name: 'הכותל', type: 'millionaire', description: 'מי רוצה להיות מיליונר - ספיישל הכותל', videoUrl: '', x: 70, y: 30, portraitX: 80, portraitY: 50, backgroundUrl: null, isUnlocked: false, data: [{ level: 1, q: 'הכותל המערבי הוא קיר תמך של איזה הר?', options: ['הר הרצל', 'הר הזיתים', 'הר המוריה (הר הבית)', 'הר הצופים'], answer: 'הר המוריה (הר הבית)' }, { level: 2, q: 'מאיזו תקופה שרדו האבנים הגדולות בתחתית הכותל?', options: ['תקופת דוד', 'תקופת בית שני (הורדוס)', 'התקופה העותמאנית', 'תקופת המנדט'], answer: 'תקופת בית שני (הורדוס)' }, { level: 3, q: 'מה אורכו של הכותל המערבי כולו (כולל החלק המוסתר)?', options: ['50 מטר', '200 מטר', '488 מטר', '1000 מטר'], answer: '488 מטר' }] },
+            { id: '5', name: 'איחוד העיר', type: 'quiz', description: 'חידון על שחרור העיר', videoUrl: '', x: 85, y: 70, portraitX: 50, portraitY: 85, backgroundUrl: null, isUnlocked: false, data: [{ q: 'באיזו מלחמה שוחררה וחוברה ירושלים?', options: ['מלחמת העצמאות', 'מלחמת ששת הימים', 'מלחמת יום הכיפורים', 'מלחמת שלום הגליל'], answer: 'מלחמת ששת הימים' }] }
+        ];
+        
+        const defaultMapUrls = {
+            landscape: "https://images.unsplash.com/photo-1572626084042-32a21fc7d2ba?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80",
+            portrait: "https://images.unsplash.com/photo-1572626084042-32a21fc7d2ba?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=1200&q=80"
+        };
+
+        const defaultClasses = ['יא1', 'יא2', 'יא3', 'יב1', 'יב2'];
+        const defaultPassword = '';
+        const DEFAULT_ADMIN_PASSWORD = '1234';
+
+        // --- מסך כניסה לניהול ---
+        function AdminLogin({ onSuccess }) {
+            const [inputCode, setInputCode] = useState('');
+            const [error, setError] = useState('');
+            const adminPassword = (() => {
+                try {
+                    const saved = localStorage.getItem('jerusalemAdminPassword');
+                    return saved || DEFAULT_ADMIN_PASSWORD;
+                } catch(e) { return DEFAULT_ADMIN_PASSWORD; }
+            })();
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (inputCode === adminPassword) {
+                    onSuccess();
+                } else {
+                    setError('קוד שגוי. נסה שוב.');
+                    setInputCode('');
+                }
+            };
+
+            return (
+                <div className="flex flex-col items-center justify-center min-h-[100dvh] bg-stone-100 p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full border-t-8 border-amber-600 text-center animate-fade-in">
+                        <div className="text-5xl mb-4">🔐</div>
+                        <h2 className="text-2xl font-black text-stone-800 mb-2">כניסה לניהול</h2>
+                        <p className="text-stone-500 text-sm mb-6">הזן את קוד הניהול כדי להמשיך</p>
+                        {error && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm font-bold border border-red-200">{error}</div>}
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <input
+                                type="password"
+                                value={inputCode}
+                                onChange={(e) => setInputCode(e.target.value)}
+                                placeholder="קוד ניהול"
+                                className="w-full text-center text-2xl tracking-widest p-3 rounded-xl bg-stone-50 border-2 border-stone-200 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+                                autoFocus
+                            />
+                            <button type="submit" className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black text-lg p-3 rounded-xl shadow-lg transition-transform hover:-translate-y-1">כניסה</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- רכיב ניהול המערכת ---
+        function AdminPanel({ stations, setStations, mapUrls, setMapUrls, webhookUrl, setWebhookUrl, generalBgUrl, setGeneralBgUrl, classes, setClasses, studentPassword, setStudentPassword, onClose, onSave }) {
+            const [editingStations, setEditingStations] = useState(Array.isArray(stations) ? [...stations] : [...defaultStations]);
+            const [editingMapUrls, setEditingMapUrls] = useState(mapUrls ? { ...mapUrls } : { ...defaultMapUrls });
+            const [editingWebhook, setEditingWebhook] = useState(webhookUrl || '');
+            const [editingGeneralBg, setEditingGeneralBg] = useState(generalBgUrl || '');
+            const [editingClasses, setEditingClasses] = useState(Array.isArray(classes) ? [...classes] : [...defaultClasses]);
+            const [editingPassword, setEditingPassword] = useState(studentPassword ?? defaultPassword);
+            const [newClassName, setNewClassName] = useState('');
+            const [adminCode, setAdminCode] = useState(() => {
+                try { return localStorage.getItem('jerusalemAdminPassword') || DEFAULT_ADMIN_PASSWORD; } catch(e) { return DEFAULT_ADMIN_PASSWORD; }
+            });
+            const [newAdminCode, setNewAdminCode] = useState('');
+            const [adminCodeMsg, setAdminCodeMsg] = useState('');
+            
+            const [activeTab, setActiveTab] = useState('settings');
+            const [selectedStationIndex, setSelectedStationIndex] = useState(0);
+            const [adminViewMode, setAdminViewMode] = useState('landscape');
+            const [message, setMessage] = useState('');
+            const [webhookTestStatus, setWebhookTestStatus] = useState(null); // null | 'testing' | 'success' | 'error'
+            const mapRef = useRef(null);
+
+            const showMessage = (msg) => { setMessage(msg); setTimeout(() => setMessage(''), 3000); };
+
+            const handleMapUpload = (type, e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                compressImage(file, (compressedBase64) => {
+                    setEditingMapUrls(prev => ({ ...prev, [type]: compressedBase64 }));
+                    setAdminViewMode(type); 
+                    showMessage(`מפה (${type === 'landscape' ? 'רוחב' : 'אורך'}) הועלתה בהצלחה!`);
+                });
+            };
+
+            const handleGeneralBgUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                compressImage(file, (compressedBase64) => {
+                    setEditingGeneralBg(compressedBase64);
+                    showMessage(`רקע כללי הועלה בהצלחה!`);
+                });
+            };
+
+            const handleStationBgUpload = (index, e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                compressImage(file, (compressedBase64) => {
+                    const newStations = [...editingStations];
+                    newStations[index].backgroundUrl = compressedBase64;
+                    setEditingStations(newStations);
+                    showMessage(`רקע ייעודי נוסף לתחנה: ${newStations[index].name}`);
+                });
+            };
+
+            const removeStationBg = (index) => {
+                const newStations = [...editingStations];
+                newStations[index].backgroundUrl = null;
+                setEditingStations(newStations);
+                showMessage(`הרקע הייעודי הוסר מהתחנה`);
+            };
+
+            const handleMapClick = (e) => {
+                if (activeTab !== 'settings' || selectedStationIndex === null || !mapRef.current) return;
+                const rect = mapRef.current.getBoundingClientRect();
+                const clickX = ((e.clientX - rect.left) / rect.width) * 100;
+                const clickY = ((e.clientY - rect.top) / rect.height) * 100;
+                
+                const newStations = [...editingStations];
+                if (adminViewMode === 'landscape') {
+                    newStations[selectedStationIndex] = { ...newStations[selectedStationIndex], x: clickX, y: clickY };
+                } else {
+                    newStations[selectedStationIndex] = { ...newStations[selectedStationIndex], portraitX: clickX, portraitY: clickY };
+                }
+                setEditingStations(newStations);
+            };
+
+            const handleDownloadTemplate = (type) => {
+                let csvRows = "";
+                if (type === 'quiz') csvRows = "שאלה,אופציה 1,אופציה 2,אופציה 3,אופציה 4,תשובה נכונה\nמי בנה את החומות?,דוד,שלמה,הורדוס,סולימאן,סולימאן";
+                if (type === 'memory') csvRows = "עמודה א,עמודה ב\nשער יפו,מערב העיר\nשער האריות,גת שמנים\nשער שכם,הרובע המוסלמי\nשער האשפות,הכותל המערבי\nשער ציון,הר ציון\nשער הפרחים,הרובע הנוצרי\nשער הרחמים,הר הבית";
+                if (type === 'millionaire') csvRows = "רמה,שאלה,אופציה 1,אופציה 2,אופציה 3,אופציה 4,תשובה נכונה\n1,בירת ישראל?,תל אביב,חיפה,ירושלים,אילת,ירושלים";
+                const blob = new Blob(["\uFEFF" + csvRows], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", `template_${type}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            };
+
+            const handleCSVUpload = (index, e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const rows = parseCSV(event.target.result).slice(1);
+                    const type = editingStations[index].type;
+                    let newData = [];
+                    if (type === 'quiz') {
+                    newData = rows.map(r => ({ q: r[0], options: [r[1], r[2], r[3], r[4]].filter(Boolean), answer: r[5] || r[1] }));
+                    } else if (type === 'memory') {
+                    newData = rows.map(r => ({ pair1: r[0], pair2: r[1] }));
+                    } else if (type === 'millionaire') {
+                    newData = rows.map(r => ({ level: parseInt(r[0])||1, q: r[1], options: [r[2], r[3], r[4], r[5]].filter(Boolean), answer: r[6] || r[2] }));
+                    }
+                    const newStations = [...editingStations];
+                    newStations[index].data = newData;
+                    setEditingStations(newStations);
+                    showMessage(`שאלות עודכנו לתחנה: ${newStations[index].name}`);
+                };
+                reader.readAsText(file);
+            };
+
+            const handleAddClass = () => {
+                if (!newClassName || typeof newClassName !== 'string') return;
+                const cleanName = newClassName.trim();
+                if (cleanName && !editingClasses.includes(cleanName)) {
+                    setEditingClasses([...editingClasses, cleanName]);
+                    setNewClassName('');
+                }
+            };
+
+            const handleRemoveClass = (idxToRemove) => {
+                setEditingClasses(editingClasses.filter((_, idx) => idx !== idxToRemove));
+            };
+
+            const handleSaveAll = () => {
+                setStations(editingStations);
+                setMapUrls(editingMapUrls);
+                setWebhookUrl(editingWebhook);
+                setGeneralBgUrl(editingGeneralBg);
+                setClasses(editingClasses);
+                setStudentPassword(editingPassword);
+                onSave(editingStations, editingMapUrls, editingWebhook, editingGeneralBg, editingClasses, editingPassword);
+                showMessage('הכל נשמר בהצלחה!');
+            };
+
+            const handleSaveAdminCode = () => {
+                const trimmed = newAdminCode.trim();
+                if (!trimmed || trimmed.length < 4) { setAdminCodeMsg('❌ הקוד חייב להכיל לפחות 4 תווים'); return; }
+                try { localStorage.setItem('jerusalemAdminPassword', trimmed); } catch(e) {}
+                setAdminCode(trimmed);
+                setNewAdminCode('');
+                setAdminCodeMsg('✅ קוד הניהול עודכן בהצלחה!');
+                setTimeout(() => setAdminCodeMsg(''), 3000);
+            };
+
+            return (
+                <div className="flex flex-col h-[100dvh] bg-stone-100 p-4 md:p-6">
+                    <header className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-md">
+                    <div><h1 className="text-xl md:text-2xl font-black text-amber-900 flex items-center gap-2"><Icon name="settings" size={24} /> ניהול המערכת</h1></div>
+                    <button onClick={onClose} className="bg-stone-200 hover:bg-stone-300 text-stone-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Icon name="log-out" size={20} /> חזור לראשי</button>
+                    </header>
+                    {message && <div className="bg-green-100 text-green-800 p-3 rounded-lg mb-4 text-center font-bold animate-fade-in border border-green-300">{message}</div>}
+                    
+                    <div className="flex space-x-reverse space-x-2 mb-6">
+                    <button onClick={() => setActiveTab('settings')} className={`flex-1 py-3 text-sm md:text-base rounded-xl font-bold transition-colors ${activeTab === 'settings' ? 'bg-amber-600 text-white shadow-md' : 'bg-white text-stone-600 hover:bg-stone-50'}`}>הגדרות ומפות</button>
+                    <button onClick={() => setActiveTab('content')} className={`flex-1 py-3 text-sm md:text-base rounded-xl font-bold transition-colors ${activeTab === 'content' ? 'bg-amber-600 text-white shadow-md' : 'bg-white text-stone-600 hover:bg-stone-50'}`}>עריכת משחקים ורקעים</button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pb-24">
+                    {activeTab === 'settings' && (
+                    <div className="bg-white p-4 md:p-6 rounded-2xl shadow-md animate-fade-in space-y-8">
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-6">
+                    <div>
+                    <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2 flex items-center gap-2"><Icon name="lock" size={20} /> סיסמת כניסה לתלמידים</h2>
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    <label className="block text-sm font-bold text-stone-700 mb-2">סיסמה נדרשת להתחברות (השאר ריק כדי לאפשר כניסה ללא סיסמה):</label>
+                    <input type="text" value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="לדוגמה: 1234" className="block w-full text-base text-stone-700 p-3 rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500" />
+                    </div>
+                    </div>
+
+                    <div>
+                    <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2 flex items-center gap-2"><Icon name="shield" size={20} /> קוד כניסה לניהול</h2>
+                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
+                    <p className="text-sm text-amber-800 mb-3">הקוד הנוכחי: <span className="font-black tracking-widest bg-amber-100 px-2 py-1 rounded">{'*'.repeat(adminCode.length)}</span></p>
+                    <label className="block text-sm font-bold text-amber-900 mb-2">קוד חדש (לפחות 4 תווים):</label>
+                    <div className="flex gap-2">
+                    <input type="password" value={newAdminCode} onChange={(e) => setNewAdminCode(e.target.value)} placeholder="הזן קוד חדש" className="flex-1 text-base text-stone-700 p-3 rounded-lg border border-amber-300 focus:outline-none focus:border-amber-500" />
+                    <button onClick={handleSaveAdminCode} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-bold text-sm">עדכן קוד</button>
+                    </div>
+                    {adminCodeMsg && <p className="mt-2 text-sm font-bold text-stone-700">{adminCodeMsg}</p>}
+                    <p className="text-xs text-amber-600 mt-2">⚠️ שמור את הקוד במקום בטוח. אם תשכח אותו, תצטרך לאפס את הדפדפן.</p>
+                    </div>
+                    </div>
+
+                    <div>
+                    <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2 flex items-center gap-2"><Icon name="users" size={20} /> ניהול כיתות</h2>
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    <label className="block text-sm font-bold text-stone-700 mb-2">הוסף כיתה חדשה:</label>
+                    <div className="flex gap-2 mb-4">
+                    <input type="text" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddClass()} placeholder="שם הכיתה (למשל יא4)" className="flex-1 text-base text-stone-700 p-2 rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500" />
+                    <button onClick={handleAddClass} className="bg-stone-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-stone-700">הוסף</button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                    {editingClasses.map((cls, idx) => (
+                    <div key={idx} className="bg-white border border-stone-300 px-3 py-1 rounded-full flex items-center gap-2 text-sm font-bold text-stone-700 shadow-sm">
+                    <span>{cls}</span>
+                    <button onClick={() => handleRemoveClass(idx)} className="text-red-500 hover:text-red-700 rounded-full hover:bg-red-50 p-1"><Icon name="x" size={14} /></button>
+                    </div>
+                    ))}
+                    {editingClasses.length === 0 && <span className="text-sm text-stone-400">לא הוגדרו כיתות. השדה יוסתר במסך ההתחברות.</span>}
+                    </div>
+                    </div>
+                    </div>
+                    </div>
+
+                    <div className="space-y-6">
+                    <div>
+                    <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2 flex items-center gap-2"><Icon name="image" size={20} /> רקע כללי לאפליקציה</h2>
+                    <p className="text-sm text-stone-500 mb-3">תמונה זו תשמש כרקע למסך הפתיחה ולכל המשחקים.</p>
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 flex flex-col items-center gap-4">
+                    <input type="file" accept="image/*" onChange={handleGeneralBgUpload} className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer"/>
+                    {editingGeneralBg && <button onClick={() => setEditingGeneralBg('')} className="text-red-500 hover:text-red-700 text-sm font-bold flex items-center gap-1"><Icon name="trash-2" size={16} /> הסר רקע כללי</button>}
+                    {editingGeneralBg && <div className="w-full h-32 rounded-xl bg-cover bg-center border shadow-inner" style={{backgroundImage: `url(${editingGeneralBg})`}}></div>}
+                    </div>
+                    </div>
+
+                    <div>
+                    <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2 flex items-center gap-2"><Icon name="link" size={20} /> חיבור ל-Make / Zapier / Google Sheets</h2>
+                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                    <label className="block text-sm font-bold text-blue-900 mb-2">כתובת Webhook לשיטס:</label>
+                    <input type="url" value={editingWebhook} onChange={(e) => { setEditingWebhook(e.target.value); setWebhookTestStatus(null); }} placeholder="https://hook.eu1.make.com/..." className="block w-full text-base text-stone-700 p-3 rounded-lg border border-stone-300 focus:outline-none focus:border-blue-500 text-left mb-3" dir="ltr" />
+                    <button
+                    onClick={async () => {
+                        if (!editingWebhook || editingWebhook.trim() === '') { setWebhookTestStatus('error'); return; }
+                        setWebhookTestStatus('testing');
+                        try {
+                        const testPayload = encodeURIComponent(JSON.stringify({ event: 'connection_test', message: 'בדיקת חיבור', timestamp: new Date().toISOString() }));
+                        new Image().src = `${editingWebhook}?payload=${testPayload}`;
+                        // Image תמיד "מצליח" — מחכים רגע ומציגים הצלחה
+                        await new Promise(r => setTimeout(r, 1500));
+                        setWebhookTestStatus('success');
+                        } catch (e) {
+                        setWebhookTestStatus('error');
+                        }
+                    }}
+                    className={`w-full py-2 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${webhookTestStatus === 'testing' ? 'bg-blue-300 text-white cursor-wait' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                    disabled={webhookTestStatus === 'testing'}
+                    >
+                    {webhookTestStatus === 'testing' ? (
+                    <><Icon name="loader" size={16} /> בודק חיבור...</>
+                    ) : (
+                    <><Icon name="wifi" size={16} /> בדוק חיבור ל-Google Sheets</>
+                    )}
+                    </button>
+                    {webhookTestStatus === 'success' && (
+                    <div className="mt-3 bg-green-100 border border-green-300 text-green-800 p-3 rounded-lg text-sm font-bold flex items-center gap-2">
+                    <Icon name="check-circle" size={18} /> הבקשה נשלחה! בדוק שהשורה הופיעה ב-Google Sheets לאימות סופי.
+                    </div>
+                    )}
+                    {webhookTestStatus === 'error' && (
+                    <div className="mt-3 bg-red-100 border border-red-300 text-red-800 p-3 rounded-lg text-sm font-bold flex items-center gap-2">
+                    <Icon name="alert-triangle" size={18} /> החיבור נכשל. בדוק שהכתובת נכונה ושה-Webhook פעיל.
+                    </div>
+                    )}
+                    <p className="text-xs text-blue-600 mt-2">💡 טיפ: צור Webhook ב-Make.com או Zapier שמחובר ל-Google Sheets שלך.</p>
+                    </div>
+                    </div>
+                    </div>
+                    </div>
+
+                    <div>
+                    <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2 flex items-center gap-2"><Icon name="map-pin" size={20} /> מפות ניווט</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    <label className="block text-sm font-bold text-stone-700 mb-2"><Icon name="monitor" size={16} className="inline mr-1" /> מפת רוחב (למחשב/מסך שוכב):</label>
+                    <input type="file" accept="image/*" onChange={(e) => handleMapUpload('landscape', e)} className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"/>
+                    </div>
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    <label className="block text-sm font-bold text-stone-700 mb-2"><Icon name="smartphone" size={16} className="inline mr-1" /> מפת אורך (למובייל עומד):</label>
+                    <input type="file" accept="image/*" onChange={(e) => handleMapUpload('portrait', e)} className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+                    </div>
+                    </div>
+
+                    <div className="mb-4">
+                    <label className="block text-sm font-bold text-stone-700 mb-2">עריכת מיקומי תחנות (בחר תחנה ואז לחץ על המפה):</label>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                    {editingStations.map((st, idx) => (
+                    <button key={st.id} onClick={() => setSelectedStationIndex(idx)} className={`px-4 py-2 rounded-full font-bold text-sm border-2 transition-all ${selectedStationIndex === idx ? 'bg-amber-100 border-amber-500 text-amber-800 scale-105' : 'bg-white border-stone-200 text-stone-600'}`}>תחנה {idx + 1}</button>
+                    ))}
+                    </div>
+                    <div className="flex justify-center mb-4 space-x-reverse space-x-2">
+                    <button onClick={() => setAdminViewMode('landscape')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 ${adminViewMode === 'landscape' ? 'bg-stone-800 text-white' : 'bg-stone-200 text-stone-600'}`}><Icon name="monitor" size={18} /> תצוגת רוחב</button>
+                    <button onClick={() => setAdminViewMode('portrait')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 ${adminViewMode === 'portrait' ? 'bg-stone-800 text-white' : 'bg-stone-200 text-stone-600'}`}><Icon name="smartphone" size={18} /> תצוגת אורך</button>
+                    </div>
+                    </div>
+
+                    <div className="w-full overflow-x-auto hide-scrollbar border-4 border-stone-300 rounded-xl bg-stone-100 flex justify-center p-4">
+                    <div 
+                    className={`relative bg-stone-200 overflow-hidden cursor-crosshair shadow-inner transition-all duration-300 ${adminViewMode === 'landscape' ? 'w-full max-w-4xl aspect-[16/9]' : 'w-full max-w-sm aspect-[9/16] md:aspect-[3/4]'}`} 
+                    ref={mapRef} 
+                    onClick={handleMapClick}
+                    >
+                    <img src={adminViewMode === 'landscape' ? editingMapUrls?.landscape || defaultMapUrls.landscape : editingMapUrls?.portrait || defaultMapUrls.portrait} alt="Map Background" className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-80" />
+                    {editingStations.map((st, idx) => {
+                    const pinX = adminViewMode === 'portrait' ? (st.portraitX ?? st.x ?? 50) : (st.x ?? 50);
+                    const pinY = adminViewMode === 'portrait' ? (st.portraitY ?? st.y ?? 50) : (st.y ?? 50);
+                    return (
+                    <div key={st.id} style={{ left: `${pinX}%`, top: `${pinY}%` }} onClick={(e) => { e.stopPropagation(); setSelectedStationIndex(idx); }} className={`absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer transition-all ${selectedStationIndex === idx ? 'scale-125 z-20' : 'opacity-80 hover:scale-110 z-10'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white shadow-lg border-2 border-white ${selectedStationIndex === idx ? 'bg-amber-500 ring-4 ring-amber-300' : 'bg-stone-800'}`}>{idx + 1}</div>
+                    </div>
+                    );
+                    })}
+                    </div>
+                    </div>
+                    </div>
+                    </div>
+                    )}
+                    
+                    {activeTab === 'content' && (
+                    <div className="space-y-6 animate-fade-in">
+                    {editingStations.map((station, index) => (
+                    <div key={station.id} className="bg-white p-4 md:p-6 rounded-2xl shadow-md border-r-4 border-blue-500">
+                    <div className="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 className="text-lg md:text-xl font-bold text-stone-800">תחנה {index + 1}: {station.name}</h2>
+                    <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs md:text-sm font-bold">{station.type === 'quiz' ? 'חידון' : station.type === 'memory' ? 'התאמה' : 'מיליונר'}</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div><label className="block text-sm font-bold text-stone-600 mb-1">שם התחנה:</label><input type="text" value={station.name} onChange={(e) => { const newSt = [...editingStations]; newSt[index].name = e.target.value; setEditingStations(newSt); }} className="w-full p-2 border border-stone-300 rounded-lg text-base" /></div>
+                    <div><label className="block text-sm font-bold text-stone-600 mb-1">תיאור למשתמש:</label><input type="text" value={station.description} onChange={(e) => { const newSt = [...editingStations]; newSt[index].description = e.target.value; setEditingStations(newSt); }} className="w-full p-2 border border-stone-300 rounded-lg text-base" /></div>
+                    </div>
+
+                    <div className="mb-4 bg-red-50 p-4 rounded-xl border border-red-100">
+                    <label className="block text-sm font-bold text-red-800 mb-1 flex items-center gap-1"><Icon name="play-circle" size={16} /> קישור לסרטון פתיחה (יוטיוב - אופציונלי):</label>
+                    <p className="text-xs text-red-600 mb-2">אם תשים כאן קישור ליוטיוב, התלמיד יצטרך לצפות בו לפני תחילת המשחק.</p>
+                    <input type="text" value={station.videoUrl || ''} onChange={(e) => { const newSt = [...editingStations]; newSt[index].videoUrl = e.target.value; setEditingStations(newSt); }} placeholder="https://www.youtube.com/watch?v=..." className="w-full p-2 border border-red-200 rounded-lg text-base text-left bg-white focus:ring-red-300" dir="ltr" />
+                    </div>
+                    
+                    <div className="mb-6 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    <label className="block text-sm font-bold text-stone-700 mb-2 flex items-center gap-1"><Icon name="image" size={16} /> רקע ייעודי למשחק בתחנה זו (אופציונלי):</label>
+                    <div className="flex flex-col md:flex-row items-center gap-4">
+                    <input type="file" id={`bg-${index}`} accept="image/*" className="hidden" onChange={(e) => handleStationBgUpload(index, e)} />
+                    <label htmlFor={`bg-${index}`} className="cursor-pointer bg-white border border-stone-300 text-stone-700 hover:bg-stone-100 px-4 py-2 rounded-lg text-sm font-bold text-center">העלה רקע לתחנה</label>
+                    
+                    {station.backgroundUrl && (
+                    <div className="flex items-center gap-4">
+                    <div className="w-16 h-12 rounded bg-cover bg-center border" style={{backgroundImage: `url(${station.backgroundUrl})`}}></div>
+                    <button onClick={() => removeStationBg(index)} className="text-red-500 hover:text-red-700 text-sm font-bold flex items-center gap-1"><Icon name="trash-2" size={16} /> הסר</button>
+                    </div>
+                    )}
+                    {!station.backgroundUrl && <span className="text-xs text-stone-400">ישמש הרקע הכללי.</span>}
+                    </div>
+                    </div>
+
+                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div>
+                    <h3 className="font-bold text-blue-900">קובץ שאלות (CSV)</h3>
+                    <p className="text-sm text-blue-700">נטענו: {station.data ? station.data.length : 0} שאלות
+                    {station.type === 'millionaire' && station.data && station.data.length > 0 && (
+                    <span className="mr-1 text-blue-500">({[...new Set(station.data.map(q => q.level))].length} שלבים)</span>
+                    )}
+                    </p>
+                    {station.type === 'memory' && (
+                    <p className="text-xs text-purple-600 mt-1">📋 פורמט: שתי עמודות — <strong>עמודה א</strong> ו-<strong>עמודה ב</strong>. כל שורה = זוג להתאמה. מומלץ 5–8 זוגות.</p>
+                    )}
+                    </div>
+                    <div className="flex gap-2 w-full md:w-auto">
+                    <button onClick={() => handleDownloadTemplate(station.type)} className="flex-1 md:flex-none bg-white border border-blue-300 text-blue-700 hover:bg-blue-100 px-4 py-2 rounded-lg text-sm font-bold">הורד תבנית</button>
+                    <input type="file" id={`csv-${index}`} accept=".csv" className="hidden" onChange={(e) => handleCSVUpload(index, e)} />
+                    <label htmlFor={`csv-${index}`} className="flex-1 md:flex-none cursor-pointer bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-bold text-center">העלה נתונים</label>
+                    </div>
+                    </div>
+                    </div>
+                    ))}
+                    </div>
+                    )}
+                    </div>
+                    <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-center shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-50">
+                    <button onClick={handleSaveAll} className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white px-10 py-3 rounded-xl font-bold text-lg shadow-lg">שמור נתונים</button>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- רכיבי המשחקים ---
+        function QuizGame({ data, onComplete }) {
+            const [currentQ, setCurrentQ] = useState(0);
+            const [score, setScore] = useState(0);
+            const [selectedAnswer, setSelectedAnswer] = useState(null);
+            const [showSuccess, setShowSuccess] = useState(false);
+            const [shakeWrong, setShakeWrong] = useState(false);
+
+            if (!data || data.length === 0) return <div className="p-8 text-center text-xl font-bold bg-white/80 backdrop-blur rounded-xl">אין שאלות שנטענו בתחנה זו...</div>;
+            const q = data[currentQ];
+
+            const handleAnswer = (opt) => {
+                if(selectedAnswer) return;
+                setSelectedAnswer(opt);
+                const isCorrect = opt === q.answer;
+                if (isCorrect) {
+                    playSound('correct');
+                    setScore(prev => prev + 1);
+                    setShowSuccess(true);
+                    setTimeout(() => setShowSuccess(false), 900);
+                } else {
+                    playSound('wrong');
+                    setShakeWrong(true);
+                    setTimeout(() => setShakeWrong(false), 500);
+                }
+
+                setTimeout(() => {
+                    if (currentQ < data.length - 1) { setCurrentQ(prev => prev + 1); setSelectedAnswer(null); } 
+                    else {
+                    playSound('win');
+                    launchConfetti(80);
+                    onComplete({ score: Math.round(((score + (isCorrect ? 1 : 0)) / data.length) * 100) });
+                    }
+                }, 1200);
+            };
+
+            return (
+                <div className={`max-w-2xl mx-auto p-4 md:p-8 bg-white/90 backdrop-blur-md rounded-2xl shadow-2xl mt-4 border-t-8 border-blue-500 animate-fade-in relative ${shakeWrong ? 'animate-wrong-shake' : ''}`}>
+                    {showSuccess && (
+                        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                            <div className="animate-pop-in text-6xl">✅</div>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center mb-6 text-sm font-bold text-stone-500 bg-white/50 px-4 py-2 rounded-full">
+                    <span>שאלה {currentQ + 1} מתוך {data.length}</span>
+                    <span>✨ ציון: {score}</span>
+                    </div>
+                    <h2 className="text-xl md:text-3xl font-black mb-8 text-center leading-tight text-stone-800 drop-shadow-sm">{q.q}</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                    {q.options.map((opt, i) => {
+                    let btnClass = "bg-white/90 border-stone-200 hover:bg-blue-50 text-stone-700 hover:border-blue-300";
+                    if (selectedAnswer) {
+                    if (opt === q.answer) btnClass = "bg-green-100 border-green-500 text-green-800 shadow-inner animate-shimmer";
+                    else if (opt === selectedAnswer) btnClass = "bg-red-100 border-red-500 text-red-800";
+                    else btnClass = "opacity-50 bg-white";
+                    }
+                    return <button key={i} onClick={() => handleAnswer(opt)} className={`p-4 md:p-5 rounded-xl font-bold text-lg border-2 transition-all shadow-sm ${btnClass}`}>{opt}</button>;
+                    })}
+                    </div>
+                </div>
+            );
+        }
+
+        // --- משחק התאמה (Matching) ---
+        function MatchingGame({ data, onComplete, attemptsLeft, attemptNumber }) {
+            const [leftItems, setLeftItems] = useState([]);
+            const [rightItems, setRightItems] = useState([]);
+            const [selectedLeft, setSelectedLeft] = useState(null);
+            const [selectedRight, setSelectedRight] = useState(null);
+            const [matched, setMatched] = useState([]); // [{leftId, rightId}]
+            const [wrongPair, setWrongPair] = useState(null);
+            const [errors, setErrors] = useState(0);
+            const [done, setDone] = useState(false);
+
+            useEffect(() => {
+                if (!data || data.length === 0) return;
+                const left = data.map((pair, idx) => ({ id: `l${idx}`, text: pair.pair1, matchId: idx }));
+                const right = shuffleArray(data.map((pair, idx) => ({ id: `r${idx}`, text: pair.pair2, matchId: idx })));
+                setLeftItems(left);
+                setRightItems(right);
+            }, [data]);
+
+            useEffect(() => {
+                if (selectedLeft !== null && selectedRight !== null) {
+                    const leftItem = leftItems[selectedLeft];
+                    const rightItem = rightItems[selectedRight];
+                    if (leftItem.matchId === rightItem.matchId) {
+                        playSound('match_correct');
+                        const newMatched = [...matched, { leftId: selectedLeft, rightId: selectedRight }];
+                        setMatched(newMatched);
+                        setSelectedLeft(null);
+                        setSelectedRight(null);
+                        if (newMatched.length === data.length) {
+                            setTimeout(() => {
+                                setDone(true);
+                                playSound('win');
+                                launchConfetti(80);
+                                const score = attemptNumber === 1 ? 100 : 50;
+                                setTimeout(() => onComplete({ score }), 1500);
+                            }, 400);
+                        }
+                    } else {
+                        playSound('match_wrong');
+                        setWrongPair({ left: selectedLeft, right: selectedRight });
+                        setErrors(e => e + 1);
+                        setTimeout(() => {
+                            setWrongPair(null);
+                            setSelectedLeft(null);
+                            setSelectedRight(null);
+                        }, 900);
+                    }
+                }
+            }, [selectedLeft, selectedRight]);
+
+            if (!data || data.length === 0) return <div className="p-8 text-center text-xl font-bold bg-white/80 backdrop-blur rounded-xl">אין נתונים למשחק...</div>;
+
+            const isLeftMatched = (idx) => matched.some(m => m.leftId === idx);
+            const isRightMatched = (idx) => matched.some(m => m.rightId === idx);
+
+            return (
+                <div className="max-w-2xl mx-auto p-4 md:p-6 bg-white/90 backdrop-blur-md rounded-2xl shadow-2xl mt-4 border-t-8 border-purple-500 animate-fade-in">
+                    {/* כותרת סטטוס */}
+                    <div className="flex justify-between items-center mb-5 text-sm font-bold text-stone-600 bg-white/60 px-4 py-2 rounded-full">
+                        <span>🔗 התאמות: {matched.length} / {data.length}</span>
+                        <span className={`${errors > 2 ? 'text-red-500' : 'text-stone-500'}`}>❌ טעויות: {errors}</span>
+                        <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs">
+                            ניסיון {attemptNumber} • {attemptNumber === 1 ? '100 נקודות' : '60 נקודות'}
+                        </span>
+                    </div>
+
+                    {done && (
+                        <div className="text-center py-4 text-2xl font-black text-green-600 animate-pop-in">
+                            🎉 כל הכבוד! {attemptNumber === 1 ? '100' : '60'} נקודות!
+                        </div>
+                    )}
+
+                    {/* לוח ההתאמה */}
+                    <div className="grid grid-cols-2 gap-3">
+                        {/* עמודה שמאל */}
+                        <div className="flex flex-col gap-2">
+                            <div className="text-center text-xs font-black text-purple-600 uppercase tracking-wider mb-1">עמודה א׳</div>
+                            {leftItems.map((item, idx) => {
+                                const isMatched = isLeftMatched(idx);
+                                const isSelected = selectedLeft === idx;
+                                const isWrong = wrongPair?.left === idx;
+                                let cls = 'bg-white border-2 border-stone-200 text-stone-700 hover:border-purple-400 hover:bg-purple-50 cursor-pointer';
+                                if (isMatched) cls = 'bg-green-100 border-2 border-green-400 text-green-700 opacity-60 cursor-default line-through';
+                                else if (isWrong) cls = 'bg-red-100 border-2 border-red-400 text-red-700 animate-wrong-shake';
+                                else if (isSelected) cls = 'bg-purple-500 border-2 border-purple-600 text-white shadow-lg scale-105';
+                                return (
+                                    <button key={item.id} disabled={isMatched || done} onClick={() => !isMatched && setSelectedLeft(idx)}
+                                        className={`p-3 rounded-xl font-bold text-sm text-center transition-all duration-200 ${cls}`}>
+                                        {item.text}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {/* עמודה ימין */}
+                        <div className="flex flex-col gap-2">
+                            <div className="text-center text-xs font-black text-indigo-600 uppercase tracking-wider mb-1">עמודה ב׳</div>
+                            {rightItems.map((item, idx) => {
+                                const isMatched = isRightMatched(idx);
+                                const isSelected = selectedRight === idx;
+                                const isWrong = wrongPair?.right === idx;
+                                let cls = 'bg-white border-2 border-stone-200 text-stone-700 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer';
+                                if (isMatched) cls = 'bg-green-100 border-2 border-green-400 text-green-700 opacity-60 cursor-default line-through';
+                                else if (isWrong) cls = 'bg-red-100 border-2 border-red-400 text-red-700 animate-wrong-shake';
+                                else if (isSelected) cls = 'bg-indigo-500 border-2 border-indigo-600 text-white shadow-lg scale-105';
+                                return (
+                                    <button key={item.id} disabled={isMatched || done} onClick={() => !isMatched && setSelectedRight(idx)}
+                                        className={`p-3 rounded-xl font-bold text-sm text-center transition-all duration-200 ${cls}`}>
+                                        {item.text}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                    <p className="text-center text-xs text-stone-400 mt-4">לחץ פריט בעמודה א׳, אחר כך פריט מתאים בעמודה ב׳</p>
+                </div>
+            );
+        }
+
+        // מוזיקת רקע למיליונר - לופ של טון מתח
+        const MILLIONAIRE_BG_MUSIC = 'https://actions.google.com/sounds/v1/science_fiction/alien_beam.ogg';
+
+        // --- מסך פתיחה מיליונר ---
+        function MillionaireIntro({ onStart, attemptsLeft, attemptNumber }) {
+            const [show, setShow] = useState(false);
+            useEffect(() => { setTimeout(() => setShow(true), 100); }, []);
+            return (
+                <div className={`max-w-2xl mx-auto mt-6 transition-all duration-700 ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-amber-400"
+                        style={{ background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' }}>
+                        {/* כוכבים דקורטיביים */}
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                            {[...Array(18)].map((_, i) => (
+                                <div key={i} className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
+                                    style={{ top: `${Math.random()*90}%`, left: `${Math.random()*100}%`, opacity: 0.3 + Math.random()*0.5, animationDelay: `${Math.random()*3}s` }} />
+                            ))}
+                        </div>
+
+                        {/* לוגו */}
+                        <div className="relative z-10 text-center pt-10 pb-4 px-6">
+                            <div className="text-6xl mb-3 animate-bounce-slow">💰</div>
+                            <div className="text-amber-300 text-lg font-black tracking-widest uppercase mb-1 opacity-80">ירושלים מציגה</div>
+                            <h1 className="text-3xl md:text-4xl font-black text-white leading-tight drop-shadow-xl">
+                                מי רוצה להיות
+                            </h1>
+                            <h1 className="text-4xl md:text-5xl font-black leading-tight"
+                                style={{ background: 'linear-gradient(90deg, #f59e0b, #fde68a, #f59e0b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundSize: '200%' }}>
+                                מיליונר ירושלים?
+                            </h1>
+                            <div className="flex justify-center gap-2 mt-4 text-2xl">
+                                {'🕍🕌⛪🏛️🗺️'.split('').map((e, i) => (
+                                    <span key={i} className="animate-bounce-slow" style={{ animationDelay: `${i * 0.15}s` }}>{e}</span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* פס פרסים */}
+                        <div className="relative z-10 mx-6 mb-6 bg-black/40 rounded-2xl p-4 border border-amber-500/40">
+                            <div className="text-center text-amber-400 text-xs font-black tracking-widest mb-3 uppercase">סולם הפרסים</div>
+                            <div className="grid grid-cols-5 gap-1 text-center">
+                                {[100, 500, 1000, 5000, 1000000].map((p, i) => (
+                                    <div key={i} className={`rounded-lg py-1 px-1 text-xs font-black ${i === 4 ? 'bg-amber-500 text-black' : 'bg-slate-700 text-amber-300'}`}>
+                                        ₪{p >= 1000 ? (p/1000)+'K' : p}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* ניסיונות */}
+                        <div className="relative z-10 px-6 pb-4 text-center">
+                            <div className="flex justify-center gap-2 mb-4">
+                                {[...Array(4)].map((_, i) => (
+                                    <div key={i} className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all ${i < (4 - attemptsLeft) ? 'bg-red-500 border-red-400 text-white' : 'bg-slate-700 border-amber-500 text-amber-300'}`}>
+                                        {i < (4 - attemptsLeft) ? '✗' : i + 1}
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-slate-300 text-sm font-bold mb-1">
+                                {attemptsLeft === 4 ? 'יש לך 4 ניסיונות' : `נשארו ${attemptsLeft} ניסיונות מתוך 4`}
+                            </p>
+                            {attemptNumber > 1 && <p className="text-amber-400 text-xs mb-3">ניסיון {attemptNumber} — שאלות חדשות!</p>}
+                        </div>
+
+                        {/* כפתור התחלה */}
+                        <div className="relative z-10 px-6 pb-8">
+                            <button onClick={onStart}
+                                className="w-full py-4 rounded-2xl font-black text-xl text-slate-900 shadow-2xl transition-transform hover:scale-105 active:scale-95"
+                                style={{ background: 'linear-gradient(135deg, #f59e0b, #fde68a, #f59e0b)' }}>
+                                🎬 התחל משחק!
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function MillionaireGame({ data, onComplete, attemptsLeft, attemptNumber }) {
+            const PRIZES = [100, 500, 1000, 2000, 5000, 10000, 50000, 100000, 500000, 1000000];
+
+            const buildLevels = (rawData) => {
+                if (!rawData || rawData.length === 0) return [];
+                const byLevel = {};
+                rawData.forEach(q => {
+                    const lvl = q.level || 1;
+                    if (!byLevel[lvl]) byLevel[lvl] = [];
+                    byLevel[lvl].push(q);
+                });
+                const sortedLevels = Object.keys(byLevel).map(Number).sort((a, b) => a - b);
+                return sortedLevels.map(lvl => {
+                    const pool = byLevel[lvl];
+                    return pool[Math.floor(Math.random() * pool.length)];
+                });
+            };
+
+            const [showIntro, setShowIntro] = useState(true);
+            const [levels] = useState(() => buildLevels(data));
+            const [currentLevel, setCurrentLevel] = useState(0);
+            const [selectedOption, setSelectedOption] = useState(null);
+            const [isCorrect, setIsCorrect] = useState(null);
+            const [gameOver, setGameOver] = useState(false);
+            const [showLevelUp, setShowLevelUp] = useState(false);
+            const [nextLevel, setNextLevel] = useState(null);
+            const [lockPhase, setLockPhase] = useState(false); // אנימציה לפני חשיפה
+            const bgMusicRef = useRef(null);
+
+            const startBgMusic = () => {
+                try {
+                    bgMusicRef.current = new Audio('https://actions.google.com/sounds/v1/science_fiction/power_down.ogg');
+                    bgMusicRef.current.loop = true;
+                    bgMusicRef.current.volume = 0.12;
+                    bgMusicRef.current.play().catch(() => {});
+                } catch(e) {}
+            };
+
+            useEffect(() => {
+                return () => {
+                    if (bgMusicRef.current) { bgMusicRef.current.pause(); bgMusicRef.current = null; }
+                };
+            }, []);
+
+            const handleStart = () => {
+                setShowIntro(false);
+                startBgMusic();
+                playSound('mill_tick');
+            };
+
+            if (showIntro) {
+                return <MillionaireIntro onStart={handleStart} attemptsLeft={attemptsLeft} attemptNumber={attemptNumber} />;
+            }
+
+            if (!levels || levels.length === 0) return <div className="bg-slate-900/80 backdrop-blur text-white p-8 rounded-xl text-center">אין נתונים למשחק.</div>;
+
+            const currentQ = levels[currentLevel];
+            const totalLevels = levels.length;
+
+            const handleAnswer = (opt) => {
+                if (selectedOption || gameOver || lockPhase) return;
+                setSelectedOption(opt);
+                setLockPhase(true);
+                // שלב 1: נעילת תשובה + צליל מתח
+                playSound('mill_answer_lock');
+
+                setTimeout(() => {
+                    if (opt === currentQ.answer) {
+                        setIsCorrect(true);
+                        playSound('mill_correct');
+                        setTimeout(() => {
+                            if (currentLevel + 1 < totalLevels) {
+                                setNextLevel(currentLevel + 1);
+                                setShowLevelUp(true);
+                            } else {
+                                if (bgMusicRef.current) bgMusicRef.current.pause();
+                                playSound('mill_win');
+                                launchConfetti(120);
+                                onComplete({ score: 100, prize: PRIZES[totalLevels - 1] });
+                            }
+                        }, 1800);
+                    } else {
+                        setIsCorrect(false);
+                        playSound('mill_wrong');
+                        if (bgMusicRef.current) bgMusicRef.current.pause();
+                        setGameOver(true);
+                        setTimeout(() => {
+                            onComplete({ score: Math.round((currentLevel / totalLevels) * 100), prize: currentLevel > 0 ? PRIZES[currentLevel - 1] : 0 });
+                        }, 3000);
+                    }
+                }, 2200);
+            };
+
+            const handleLevelUpDone = () => {
+                setShowLevelUp(false);
+                setCurrentLevel(nextLevel);
+                setSelectedOption(null);
+                setIsCorrect(null);
+                setLockPhase(false);
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto h-[75dvh] bg-slate-900/85 backdrop-blur-md rounded-3xl shadow-2xl overflow-hidden flex flex-col border-4 border-slate-700 animate-fade-in text-white mt-4 relative">
+                    {showLevelUp && <LevelUpPopup level={nextLevel + 1} prize={PRIZES[nextLevel]} onDone={handleLevelUpDone} />}
+
+                    {/* סרגל שלבים */}
+                    <div className="flex justify-center gap-1 p-3 bg-slate-800/80 border-b border-slate-700 flex-wrap">
+                    {levels.map((_, idx) => (
+                    <div key={idx} className={`flex flex-col items-center px-2 py-1 rounded-lg text-xs font-bold transition-all duration-500 ${idx === currentLevel ? 'bg-amber-500 text-slate-900 scale-110 animate-shimmer' : idx < currentLevel ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                    <span>{idx < currentLevel ? '✅' : `שלב ${idx + 1}`}</span>
+                    <span className="text-[10px]">₪{PRIZES[idx]?.toLocaleString()}</span>
+                    </div>
+                    ))}
+                    </div>
+
+                    <div className="flex-1 p-4 flex flex-col justify-end bg-gradient-to-t from-slate-900 via-transparent to-transparent relative">
+                    <div className="absolute top-4 left-0 right-0 text-center text-amber-400 font-bold text-sm bg-slate-900/50 py-1 mx-auto w-max px-4 rounded-full animate-shimmer">
+                    💰 על השולחן: ₪ {PRIZES[currentLevel]?.toLocaleString()}
+                    </div>
+                    {/* אינדיקטור ניסיונות */}
+                    <div className="absolute top-4 right-4 flex gap-1">
+                        {[...Array(4)].map((_, i) => (
+                            <div key={i} className={`w-3 h-3 rounded-full border ${i < (4 - attemptsLeft) ? 'bg-red-500 border-red-400' : 'bg-slate-600 border-amber-500'}`} />
+                        ))}
+                    </div>
+                    <div className="relative mb-6 z-10">
+                    <div className={`relative bg-slate-800/90 border-2 text-center p-6 rounded-2xl shadow-lg transition-all ${lockPhase && isCorrect === null ? 'border-amber-400 animate-shimmer' : isCorrect === true ? 'border-green-400' : isCorrect === false ? 'border-red-400 animate-wrong-shake' : 'border-blue-400'}`}>
+                    {lockPhase && isCorrect === null && (
+                        <div className="absolute top-2 right-3 text-xs text-amber-400 font-black animate-pulse">⏳ בודק תשובה...</div>
+                    )}
+                    <h2 className="text-lg md:text-2xl font-bold">{currentQ.q}</h2>
+                    </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 z-10">
+                    {currentQ.options.map((opt, idx) => {
+                    let btnStyle = "bg-slate-800/90 border-blue-500 text-white hover:bg-blue-900/90";
+                    if (selectedOption === opt) {
+                    if (isCorrect === true) btnStyle = "bg-green-600/90 border-green-400 animate-shimmer";
+                    else if (isCorrect === false) btnStyle = "bg-red-600/90 border-red-400";
+                    else btnStyle = "bg-amber-500/90 border-amber-300 text-slate-900 animate-pulse";
+                    } else if (gameOver && opt === currentQ.answer) btnStyle = "bg-green-600/90 border-green-400";
+                    else if (selectedOption) btnStyle = "opacity-30 bg-slate-800/50 cursor-default";
+
+                    return (
+                    <button key={idx} onClick={() => handleAnswer(opt)} disabled={!!selectedOption || lockPhase} className={`p-3 md:p-4 rounded-full border-2 text-right flex items-center text-lg transition-all ${btnStyle}`}>
+                    <span className="text-amber-500 font-black ml-3">{['א', 'ב', 'ג', 'ד'][idx]}:</span> {opt}
+                    </button>
+                    );
+                    })}
+                    </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- רכיב ראשי (App) ---
+        function App() {
+            const [view, setView] = useState('login'); 
+            const [studentName, setStudentName] = useState('');
+            const [selectedClass, setSelectedClass] = useState('');
+            const [inputPassword, setInputPassword] = useState('');
+            const [loginError, setLoginError] = useState('');
+            
+            // App Data States
+            const [stations, setStations] = useState(defaultStations);
+            const [mapUrls, setMapUrls] = useState(defaultMapUrls);
+            const [webhookUrl, setWebhookUrl] = useState(''); 
+            const [generalBgUrl, setGeneralBgUrl] = useState(''); 
+            const [classes, setClasses] = useState(defaultClasses);
+            const [studentPassword, setStudentPassword] = useState(defaultPassword);
+            const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+            
+            const [activeStationId, setActiveStationId] = useState(null);
+            const [showVideo, setShowVideo] = useState(false);
+            const [globalMessage, setGlobalMessage] = useState('');
+            const [finalSummary, setFinalSummary] = useState(null);
+            // ניסיונות לפי תחנה: { stationId: { used: number, max: number } }
+            const [stationAttempts, setStationAttempts] = useState({});
+            const [isPortrait, setIsPortrait] = useState(false);
+            
+            const [user, setUser] = useState(null);
+            const appId = 'jerusalem-demo-app';
+
+            useEffect(() => {
+                const checkOrientation = () => setIsPortrait(window.innerHeight > window.innerWidth);
+                checkOrientation(); 
+                window.addEventListener('resize', checkOrientation);
+                return () => window.removeEventListener('resize', checkOrientation);
+            }, []);
+
+            useEffect(() => {
+                const loadData = (data) => {
+                    if (data.stations && Array.isArray(data.stations)) setStations(data.stations);
+                    if (data.webhookUrl && typeof data.webhookUrl === 'string') setWebhookUrl(data.webhookUrl);
+                    if (data.generalBgUrl && typeof data.generalBgUrl === 'string') setGeneralBgUrl(data.generalBgUrl);
+                    if (data.mapUrls) setMapUrls(data.mapUrls);
+                    else if (data.mapUrl) setMapUrls({ landscape: data.mapUrl, portrait: data.mapUrl });
+                    if (data.classes && Array.isArray(data.classes)) setClasses(data.classes);
+                    if (data.studentPassword !== undefined && typeof data.studentPassword === 'string') setStudentPassword(data.studentPassword);
+                };
+
+                const initAuth = async () => {
+                    if (window.FirebaseAuth) {
+                    try {
+                    await window.signInAnonymously(window.FirebaseAuth);
+                    window.onAuthStateChanged(window.FirebaseAuth, async (currentUser) => {
+                    setUser(currentUser);
+                    if (currentUser && window.FirebaseDB) {
+                    const docRef = window.doc(window.FirebaseDB, 'artifacts', appId, 'public', 'gameConfig');
+                    const docSnap = await window.getDoc(docRef);
+                    if (docSnap.exists()) {
+                    loadData(docSnap.data());
+                    }
+                    }
+                    });
+                    } catch (e) { console.error("Auth error", e); }
+                    } else {
+                    const localData = localStorage.getItem('jerusalemGameConfig');
+                    if (localData) {
+                    try {
+                    loadData(JSON.parse(localData));
+                    } catch (e) { console.error("Error parsing local data", e); }
+                    }
+                    }
+                };
+                initAuth();
+            }, []);
+
+            const saveToCloudAndLocal = async (updatedStations, updatedMapUrls, updatedWebhookUrl, updatedGeneralBgUrl, updatedClasses, updatedPassword) => {
+                const dataToSave = { 
+                    stations: updatedStations, 
+                    mapUrls: updatedMapUrls,
+                    webhookUrl: updatedWebhookUrl,
+                    generalBgUrl: updatedGeneralBgUrl,
+                    classes: updatedClasses,
+                    studentPassword: updatedPassword
+                };
+
+                localStorage.setItem('jerusalemGameConfig', JSON.stringify(dataToSave));
+                
+                if (window.FirebaseDB && user) {
+                    try {
+                    const docRef = window.doc(window.FirebaseDB, 'artifacts', appId, 'public', 'gameConfig');
+                    await window.setDoc(docRef, dataToSave);
+                    } catch (e) { console.error("Error saving to cloud", e); }
+                }
+            };
+
+            // מיפוי תחנה → שם לשונית ב-Google Sheets + משקל לציון הסופי
+            const STATION_SHEET_CONFIG = {
+                '1': { sheetName: 'תחנה 1 - חומות',      weight: 0.25, type: 'quiz' },
+                '2': { sheetName: 'תחנה 2 - שערים',      weight: 0.10, type: 'memory' },
+                '3': { sheetName: 'תחנה 3 - עיר דוד',    weight: 0.25, type: 'quiz' },
+                '4': { sheetName: 'תחנה 4 - כותל',       weight: 0.15, type: 'millionaire' },
+                '5': { sheetName: 'תחנה 5 - איחוד העיר', weight: 0.25, type: 'quiz' },
+            };
+
+            const sendDataToWebhook = async (eventType, eventData) => {
+                if (!webhookUrl || typeof webhookUrl !== 'string' || webhookUrl.trim() === '') return;
+                const payload = { 
+                    event: eventType, 
+                    studentName: studentName, 
+                    className: selectedClass, 
+                    timestamp: new Date().toISOString(), 
+                    ...eventData 
+                };
+                try {
+                    const encoded = encodeURIComponent(JSON.stringify(payload));
+                    const fullUrl = `${webhookUrl}?payload=${encoded}`;
+                    console.log('📤 שולח webhook:', eventType, '| אורך:', fullUrl.length);
+                    // שימוש ב-Image במקום fetch — עוקף CORS לחלוטין
+                    new Image().src = fullUrl;
+                } catch (error) { 
+                    console.error('❌ שגיאה:', error); 
+                }
+            };
+
+            const handleLogin = (e) => { 
+                e.preventDefault(); 
+                
+                if (!studentName || typeof studentName !== 'string' || studentName.trim() === '') {
+                    setLoginError("נא להזין שם כדי להתחיל.");
+                    return;
+                }
+                
+                const safeClasses = Array.isArray(classes) ? classes : defaultClasses;
+                if (safeClasses.length > 0 && !selectedClass) {
+                    setLoginError("נא לבחור כיתה מתוך הרשימה.");
+                    return;
+                }
+                
+                const isPasswordRequired = typeof studentPassword === 'string' && studentPassword.trim() !== '';
+                if (isPasswordRequired) {
+                    if (!inputPassword || inputPassword !== studentPassword) {
+                    setLoginError("סיסמה שגויה. נסה שוב.");
+                    return;
+                    }
+                }
+
+                setLoginError("");
+                playSound('mapopen');
+                setView('map'); 
+            };
+
+            // מספר ניסיונות מקסימלי לפי סוג
+            const getMaxAttempts = (type) => {
+                if (type === 'millionaire') return 4;
+                if (type === 'memory') return 2;
+                return 1; // quiz — ניסיון אחד
+            };
+
+            const handleStationComplete = ({ score, prize }) => {
+                const safeStations = Array.isArray(stations) ? stations : defaultStations;
+                const currentStation = safeStations.find(s => s.id === activeStationId);
+                if (!currentStation) return setView('map');
+
+                // עדכון ניסיונות
+                const maxAttempts = getMaxAttempts(currentStation.type);
+                const prevAttempts = stationAttempts[activeStationId] || { used: 0, max: maxAttempts };
+                const newUsed = prevAttempts.used + 1;
+                const newAttempts = { ...stationAttempts, [activeStationId]: { used: newUsed, max: maxAttempts } };
+                setStationAttempts(newAttempts);
+
+                const sheetConfig = STATION_SHEET_CONFIG[currentStation.id] || {};
+                const sheetName = sheetConfig.sheetName || `תחנה ${currentStation.id}`;
+
+                // שלח נתוני תחנה עם שם הלשונית
+                sendDataToWebhook("station_update", {
+                    sn: sheetName,
+                    sid: currentStation.id,
+                    sc: score,
+                    pr: prize || 0,
+                    at: newUsed,
+                    tp: currentStation.type
+                });
+
+                const newStations = safeStations.map(st => {
+                    if (st.id !== activeStationId) return st;
+                    const prevScore = st.score || 0;
+                    const bestScore = Math.max(prevScore, score);
+                    return { ...st, completed: true, score: bestScore, prize: prize || st.prize || 0 };
+                });
+                const currentIndex = newStations.findIndex(s => s.id === activeStationId);
+                if (currentIndex >= 0 && currentIndex + 1 < newStations.length) newStations[currentIndex + 1].isUnlocked = true;
+
+                setStations(newStations);
+
+                // עבור למפה רק אם אין ניסיונות נוספים, או אם הציון מושלם
+                const finalAttempts = newAttempts[activeStationId];
+                const hasMoreAttempts = finalAttempts.used < finalAttempts.max;
+                const isPerfectScore = score === 100;
+                if (!hasMoreAttempts || isPerfectScore) {
+                    setView('map');
+                }
+
+                if (newStations.every(st => st.completed)) {
+                    // חישוב ציון משוקלל לפי המשקלים
+                    let weightedScore = 0;
+                    newStations.forEach(st => {
+                        const cfg = STATION_SHEET_CONFIG[st.id];
+                        if (cfg) weightedScore += (st.score || 0) * cfg.weight;
+                    });
+                    weightedScore = Math.round(weightedScore);
+
+                    const stationScores = {};
+                    newStations.forEach(st => {
+                        const cfg = STATION_SHEET_CONFIG[st.id];
+                        if (cfg) stationScores[cfg.sheetName] = st.score || 0;
+                    });
+
+                    sendDataToWebhook("game_summary", {
+                        sheetName: 'ציון סופי',
+                        s1: newStations.find(s=>s.id==='1')?.score||0,
+                        s2: newStations.find(s=>s.id==='2')?.score||0,
+                        s3: newStations.find(s=>s.id==='3')?.score||0,
+                        s4: newStations.find(s=>s.id==='4')?.score||0,
+                        s5: newStations.find(s=>s.id==='5')?.score||0,
+                        weighted: weightedScore,
+                        prize: newStations.reduce((sum, st) => sum + (st.prize || 0), 0)
+                    });
+                    setTimeout(() => {
+                        playSound('tada');
+                        launchConfetti(150);
+                        setFinalSummary({
+                            weightedScore,
+                            stations: newStations,
+                            totalPrize: newStations.reduce((sum, st) => sum + (st.prize || 0), 0)
+                        });
+                        setView('summary');
+                    }, 500);
+                }
+            };
+
+            const renderView = () => {
+                // --- מסך סיכום סופי ---
+                if (view === 'summary' && finalSummary) {
+                    const { weightedScore, stations: sumStations, totalPrize } = finalSummary;
+                    const bgStyle = generalBgUrl ? { backgroundImage: `url(${generalBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
+                    const scoreColor = weightedScore >= 85 ? 'text-green-500' : weightedScore >= 60 ? 'text-amber-500' : 'text-red-500';
+                    const scoreBg = weightedScore >= 85 ? 'from-green-900 to-green-700' : weightedScore >= 60 ? 'from-amber-900 to-amber-700' : 'from-red-900 to-red-700';
+                    const scoreEmoji = weightedScore >= 85 ? '🏆' : weightedScore >= 60 ? '🌟' : '💪';
+
+                    return (
+                        <div className="min-h-[100dvh] flex flex-col items-center justify-start p-4 relative overflow-auto"
+                            style={generalBgUrl ? bgStyle : { background: 'linear-gradient(135deg, #1a1a2e, #16213e, #0f3460)' }}>
+                            {generalBgUrl && <div className="absolute inset-0 bg-black/60 z-0" />}
+
+                            <div className="relative z-10 w-full max-w-lg mx-auto mt-4 mb-8 animate-fade-in">
+                                {/* כותרת */}
+                                <div className="text-center mb-6">
+                                    <div className="text-7xl mb-3 animate-pop-in">{scoreEmoji}</div>
+                                    <h1 className="text-3xl md:text-4xl font-black text-white drop-shadow-xl mb-1">כל הכבוד, {studentName}!</h1>
+                                    <p className="text-stone-300 font-bold">סיימת את מסע ירושלים</p>
+                                </div>
+
+                                {/* ציון גדול */}
+                                <div className={`bg-gradient-to-br ${scoreBg} rounded-3xl p-6 text-center mb-4 shadow-2xl border border-white/10`}>
+                                    <div className="text-white/70 font-bold text-sm uppercase tracking-widest mb-1">ציון סופי משוקלל</div>
+                                    <div className={`text-8xl font-black ${scoreColor} drop-shadow-xl`}>{weightedScore}</div>
+                                    <div className="text-white/60 text-sm mt-1">מתוך 100</div>
+                                    {totalPrize > 0 && (
+                                        <div className="mt-3 bg-black/30 rounded-xl px-4 py-2 inline-block">
+                                            <span className="text-amber-400 font-black text-lg">💰 ₪{totalPrize.toLocaleString()}</span>
+                                            <span className="text-white/60 text-sm mr-2">פרס מצטבר</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* פירוט לפי תחנה */}
+                                <div className="bg-white/10 backdrop-blur rounded-2xl p-4 mb-4 border border-white/20">
+                                    <h3 className="text-white font-black text-center mb-3 text-sm uppercase tracking-wider">פירוט תחנות</h3>
+                                    <div className="space-y-2">
+                                        {sumStations.map(st => {
+                                            const cfg = STATION_SHEET_CONFIG[st.id];
+                                            if (!cfg) return null;
+                                            const weight = cfg.weight * 100;
+                                            const contribution = Math.round((st.score || 0) * cfg.weight);
+                                            const typeLabel = st.type === 'quiz' ? '📝' : st.type === 'memory' ? '🔗' : '💰';
+                                            const barW = st.score || 0;
+                                            return (
+                                                <div key={st.id} className="bg-white/5 rounded-xl p-3">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-white font-bold text-sm">{typeLabel} {st.name}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-white/50 text-xs">×{weight}%</span>
+                                                            <span className="text-amber-400 font-black text-sm">{st.score || 0}</span>
+                                                            <span className="text-white/40 text-xs">→ {contribution}נק׳</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full bg-white/10 rounded-full h-2">
+                                                        <div className="h-2 rounded-full transition-all duration-1000"
+                                                            style={{ width: `${barW}%`, background: barW >= 85 ? '#22c55e' : barW >= 60 ? '#f59e0b' : '#ef4444' }} />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="mt-3 pt-3 border-t border-white/20 flex justify-between items-center">
+                                        <span className="text-white/70 text-sm font-bold">סה״כ משוקלל</span>
+                                        <span className={`text-2xl font-black ${scoreColor}`}>{weightedScore}</span>
+                                    </div>
+                                </div>
+
+                                {/* כפתור חזרה */}
+                                <button onClick={() => { setView('map'); setGlobalMessage('🏆 סיימת את המסע!'); }}
+                                    className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black text-lg p-4 rounded-xl shadow-lg transition-transform hover:-translate-y-1">
+                                    חזרה למפה 🗺️
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                if (view === 'login') {
+                    const bgStyle = generalBgUrl ? { backgroundImage: `url(${generalBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
+                    const isPasswordRequired = typeof studentPassword === 'string' && studentPassword.trim() !== '';
+                    const safeClasses = Array.isArray(classes) ? classes : defaultClasses;
+                    const hasClasses = safeClasses.length > 0;
+                    
+                    return (
+                    <div className={`flex flex-col items-center justify-center min-h-[100dvh] p-4 ${generalBgUrl ? '' : 'bg-stars bg-stone-100'} relative`} style={bgStyle}>
+                    {generalBgUrl && <div className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm z-0"></div>}
+                    
+                    <div className="absolute top-4 left-4 z-50">
+                    <button onClick={() => setView('admin')} className="bg-white/90 p-3 rounded-full shadow-lg text-stone-600 hover:text-amber-600 transition-all hover:scale-110" title="כניסה למנהלים">
+                    <Icon name="settings" size={24} />
+                    </button>
+                    </div>
+                    
+                    <div className="relative z-10 bg-white/95 backdrop-blur-md p-6 md:p-8 rounded-3xl shadow-2xl max-w-sm w-full border-t-8 border-amber-500 text-center animate-fade-in">
+                    <Icon name="map" size={60} className="mx-auto text-amber-500 mb-4 animate-bounce-slow drop-shadow-md" />
+                    <h1 className="text-3xl font-black text-amber-900 mb-2 drop-shadow-sm">מסע בירושלים</h1>
+                    <p className="text-stone-500 font-bold mb-6">התחברו כדי להתחיל במשחק</p>
+                    
+                    {loginError && (
+                    <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm font-bold border border-red-200 animate-fade-in">
+                    <Icon name="alert-circle" size={16} className="inline mr-1 -mt-1" />
+                    {loginError}
+                    </div>
+                    )}
+
+                    <form onSubmit={handleLogin} className="space-y-4" noValidate>
+                    <input type="text" value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="הקלד את שמך (לדוגמה: ירון מלאכי)" className="w-full text-right text-lg p-3 rounded-xl bg-stone-50 border-2 border-stone-200 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all" />
+                    
+                    {hasClasses && (
+                    <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full text-right text-lg p-3 rounded-xl bg-stone-50 border-2 border-stone-200 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all cursor-pointer">
+                    <option value="" disabled>בחר כיתה...</option>
+                    {safeClasses.map((cls, i) => (
+                    <option key={i} value={cls}>{cls}</option>
+                    ))}
+                    </select>
+                    )}
+
+                    {isPasswordRequired && (
+                    <input type="password" value={inputPassword} onChange={(e) => setInputPassword(e.target.value)} placeholder="סיסמת כניסה (שאל את המורה)" className="w-full text-center text-lg p-3 rounded-xl bg-stone-50 border-2 border-stone-200 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all" />
+                    )}
+
+                    <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black text-xl p-4 rounded-xl shadow-lg transition-transform hover:-translate-y-1 mt-2">התחל מסע!</button>
+                    </form>
+                    </div>
+                    </div>
+                    );
+                }
+                
+                if (view === 'admin') {
+                    if (!adminAuthenticated) {
+                        return <AdminLogin onSuccess={() => setAdminAuthenticated(true)} />;
+                    }
+                    return <AdminPanel stations={stations} setStations={setStations} mapUrls={mapUrls} setMapUrls={setMapUrls} webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl} generalBgUrl={generalBgUrl} setGeneralBgUrl={setGeneralBgUrl} classes={classes} setClasses={setClasses} studentPassword={studentPassword} setStudentPassword={setStudentPassword} onClose={() => { setAdminAuthenticated(false); setView('login'); }} onSave={saveToCloudAndLocal} />;
+                }
+
+                if (view === 'map') {
+                    const safeMapUrls = mapUrls || defaultMapUrls;
+                    const safeStations = Array.isArray(stations) ? stations : defaultStations;
+                    const currentMapImage = isPortrait ? (safeMapUrls.portrait || defaultMapUrls.portrait) : (safeMapUrls.landscape || defaultMapUrls.landscape);
+                    
+                    return (
+                    <div className="min-h-[100dvh] bg-stone-900 flex flex-col items-center justify-center relative overflow-hidden">
+                    <header className="absolute top-4 right-4 bg-white/90 px-4 py-2 rounded-full shadow-lg z-50 text-sm flex gap-2">
+                    <span className="font-black text-amber-700">{studentName}</span>
+                    {selectedClass && <span className="font-bold text-stone-500">| {selectedClass}</span>}
+                    </header>
+                    
+                    {globalMessage && (
+                    <div className="absolute top-20 z-50 animate-bounce-slow">
+                    <div className="bg-green-500 text-white px-6 py-3 rounded-full font-black shadow-xl text-center border-4 border-green-300">
+                    <Icon name="award" size={24} className="inline mr-2 -mt-1" /> {globalMessage}
+                    </div>
+                    </div>
+                    )}
+
+                    <div className={`relative w-full h-[100dvh] md:h-auto md:max-w-5xl md:aspect-video bg-stone-800 shadow-2xl animate-fade-in ${isPortrait ? 'overflow-hidden' : ''}`}>
+                    {currentMapImage && <img src={currentMapImage} alt="Map" className={`absolute inset-0 w-full h-full ${isPortrait ? 'object-cover' : 'object-contain md:object-cover'} opacity-90`} />}
+                    
+                    {safeStations.map((st, idx) => {
+                    if (typeof st !== 'object' || !st) return null;
+                    const pinX = isPortrait ? (st.portraitX ?? st.x ?? 50) : (st.x ?? 50);
+                    const pinY = isPortrait ? (st.portraitY ?? st.y ?? 50) : (st.y ?? 50);
+                    const isLocked = !st.isUnlocked;
+                    const isCompleted = st.completed;
+                    
+                    let pinColor = isCompleted ? 'bg-green-500 ring-green-300' : (isLocked ? 'bg-stone-500 ring-stone-400 opacity-80 grayscale' : 'bg-amber-500 ring-amber-300 animate-pulse');
+                    let cursor = isLocked ? 'cursor-not-allowed' : 'cursor-pointer';
+                    
+                    return (
+                    <div key={st.id || idx} 
+                    style={{ left: `${pinX}%`, top: `${pinY}%` }} 
+                    onClick={() => { 
+                    if (!isLocked && !isCompleted) { 
+                    setActiveStationId(st.id); 
+                    playSound('flip');
+                    if(st.videoUrl && st.videoUrl.trim() !== '') {
+                    setShowVideo(true);
+                    } else {
+                    setShowVideo(false);
+                    }
+                    setView('game'); 
+                    } 
+                    }} 
+                    className={`absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center map-pin ${cursor} z-20`}
+                    >
+                    <div className="bg-white/95 backdrop-blur px-3 py-1 text-xs md:text-sm font-black rounded-full mb-2 shadow-lg text-stone-800 whitespace-nowrap border border-stone-100">
+                    {st.name || `תחנה ${idx+1}`}
+                    </div>
+                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-white shadow-2xl ring-4 ${pinColor}`}>
+                    {isCompleted ? <Icon name="check" size={24} /> : (isLocked ? <Icon name="lock" size={20} /> : <Icon name="star" size={24} />)}
+                    </div>
+                    </div>
+                    );
+                    })}
+                    </div>
+                    </div>
+                    );
+                }
+
+                if (view === 'game') {
+                    const safeStations = Array.isArray(stations) ? stations : defaultStations;
+                    const currentStation = safeStations.find(s => s.id === activeStationId);
+                    
+                    if (!currentStation) {
+                    setView('map');
+                    return null;
+                    }
+
+                    const hasVideo = currentStation.videoUrl && currentStation.videoUrl.trim() !== '';
+                    const embedUrl = hasVideo ? getEmbedUrl(currentStation.videoUrl) : null;
+
+                    // מסך המשחק עם טאבים (סרטון + משחק)
+                    const bgUrl = currentStation.backgroundUrl || generalBgUrl;
+                    const bgStyle = bgUrl ? { backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' } : {};
+
+                    return (
+                    <div className={`min-h-[100dvh] p-4 relative flex flex-col ${bgUrl ? '' : 'bg-stone-100'} animate-fade-in`} style={bgStyle}>
+                    {bgUrl && <div className="absolute inset-0 bg-stone-900/30 pointer-events-none z-0"></div>}
+                    
+                    {/* כותרת עליונה */}
+                    <div className="relative z-10 w-full max-w-4xl mx-auto flex justify-between items-center bg-white/90 backdrop-blur-md p-4 rounded-xl shadow-lg mb-4 border border-white/50">
+                    <div>
+                    <h2 className="text-lg md:text-2xl font-black text-stone-800 drop-shadow-sm">{currentStation.name}</h2>
+                    <p className="text-stone-500 font-bold text-xs md:text-sm">{currentStation.description}</p>
+                    </div>
+                    <button onClick={() => setView('map')} className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-lg font-bold flex items-center gap-1 shadow-sm transition-all"><Icon name="x" size={20} /> חזרה למפה</button>
+                    </div>
+
+                    {/* טאבים - מוצגים רק אם יש סרטון */}
+                    {hasVideo && (
+                    <div className="relative z-10 w-full max-w-4xl mx-auto flex gap-2 mb-4">
+                    <button
+                    onClick={() => setShowVideo(true)}
+                    className={`flex-1 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all shadow-md ${showVideo ? 'bg-red-500 text-white' : 'bg-white/80 text-stone-600 hover:bg-white'}`}
+                    >
+                    <Icon name="play-circle" size={20} /> 📹 סרטון
+                    </button>
+                    <button
+                    onClick={() => setShowVideo(false)}
+                    className={`flex-1 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all shadow-md ${!showVideo ? 'bg-amber-500 text-white' : 'bg-white/80 text-stone-600 hover:bg-white'}`}
+                    >
+                    <Icon name="gamepad-2" size={20} /> 🎮 משחק
+                    </button>
+                    </div>
+                    )}
+                    
+                    {/* תוכן: סרטון או משחק */}
+                    <div className="relative z-10 flex-1">
+                    {hasVideo && showVideo ? (
+                    <div className="w-full max-w-4xl mx-auto">
+                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-stone-600">
+                    {embedUrl ? (
+                    <iframe src={embedUrl} className="absolute inset-0 w-full h-full" frameBorder="0" allow="autoplay; encrypted-media" allowFullScreen></iframe>
+                    ) : (
+                    <div className="flex items-center justify-center h-full text-stone-400 font-bold">הקישור לסרטון אינו תקין...</div>
+                    )}
+                    </div>
+                    <button onClick={() => setShowVideo(false)} className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-white font-black text-lg p-4 rounded-xl shadow-lg transition-transform hover:-translate-y-1 flex items-center justify-center gap-2">
+                    עבור למשחק <Icon name="arrow-left" size={22} />
+                    </button>
+                    </div>
+                    ) : (() => {
+                        const maxAttempts = getMaxAttempts(currentStation.type);
+                        const attemptInfo = stationAttempts[activeStationId] || { used: 0, max: maxAttempts };
+                        const attemptsLeft = maxAttempts - attemptInfo.used;
+                        const attemptNumber = attemptInfo.used + 1;
+                        const isCompleted = currentStation.completed;
+
+                        // אם כבר השלים וכבר אין ניסיונות → הצג סיכום בלבד
+                        if (isCompleted && attemptsLeft <= 0) {
+                            return (
+                                <div className="max-w-md mx-auto mt-8 bg-white/90 backdrop-blur rounded-2xl shadow-xl p-8 text-center border-t-8 border-green-500 animate-fade-in">
+                                    <div className="text-6xl mb-3">🏆</div>
+                                    <h2 className="text-2xl font-black text-green-700 mb-2">תחנה הושלמה!</h2>
+                                    <p className="text-stone-500 font-bold mb-1">ציון: <span className="text-amber-600 text-xl font-black">{currentStation.score}</span> נקודות</p>
+                                    <p className="text-xs text-stone-400 mb-6">ניצלת את כל {maxAttempts} הניסיונות</p>
+                                    <button onClick={() => setView('map')} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black text-lg p-4 rounded-xl">חזרה למפה</button>
+                                </div>
+                            );
+                        }
+
+                        // כפתור שחק שוב (כשהשלים אבל נשארו ניסיונות)
+                        const ReplayBanner = isCompleted && attemptsLeft > 0 ? (
+                            <div className="max-w-2xl mx-auto mb-3 bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3 flex items-center justify-between animate-fade-in">
+                                <div>
+                                    <span className="font-black text-amber-800">ציון קודם: {currentStation.score}</span>
+                                    <span className="text-amber-600 text-sm mr-3">• נשארו {attemptsLeft} ניסיונות</span>
+                                </div>
+                                <span className="text-xs text-amber-500 bg-amber-100 px-2 py-1 rounded-full font-bold">
+                                    {currentStation.type === 'memory' ? '50 נקודות בניסיון 2' : currentStation.type === 'millionaire' ? 'ניסיון חדש!' : ''}
+                                </span>
+                            </div>
+                        ) : null;
+
+                        return (
+                            <div>
+                            {ReplayBanner}
+                            {currentStation.type === 'quiz' && <QuizGame key={`quiz-${attemptInfo.used}`} data={currentStation.data} onComplete={handleStationComplete} />}
+                            {currentStation.type === 'memory' && <MatchingGame key={`match-${attemptInfo.used}`} data={currentStation.data} onComplete={handleStationComplete} attemptsLeft={attemptsLeft} attemptNumber={attemptNumber} />}
+                            {currentStation.type === 'millionaire' && <MillionaireGame key={`mill-${attemptInfo.used}`} data={currentStation.data} onComplete={handleStationComplete} attemptsLeft={attemptsLeft} attemptNumber={attemptNumber} />}
+                            </div>
+                        );
+                    })()}
+                    </div>
+                    </div>
+                    );
+                }
+            };
+
+            return renderView();
+        }
+
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                    <div className="min-h-screen bg-red-50 text-red-800 flex flex-col items-center justify-center p-6 text-center" dir="rtl">
+                    <h1 className="text-3xl md:text-5xl font-black mb-4">אופס! נתקענו 😕</h1>
+                    <p className="mb-6 font-bold text-lg max-w-md">קרתה שגיאת תצוגה. לא לדאוג, הנתונים שלך בטוחים.</p>
+                    <button onClick={() => window.location.reload()} className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-4 rounded-xl font-black text-xl shadow-lg transition-transform hover:scale-105 mb-4">
+                    טען את העמוד מחדש
+                    </button>
+                    <button onClick={() => {
+                    localStorage.removeItem('jerusalemGameConfig');
+                    window.location.reload();
+                    }} className="text-red-500 underline text-sm">
+                    איפוס עמוק (אם הבעיה חוזרת על עצמה)
+                    </button>
+                    </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        );
+    </script>
+</body>
+</html>
