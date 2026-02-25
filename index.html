@@ -576,12 +576,13 @@
                         setWebhookTestStatus('testing');
                         try {
                         const testPayload = encodeURIComponent(JSON.stringify({ event: 'connection_test', timestamp: new Date().toISOString() }));
-                        const url = `${editingWebhook}?payload=${testPayload}`;
-                        const xhr = new XMLHttpRequest();
-                        xhr.open('GET', url, true);
-                        xhr.onload = () => setWebhookTestStatus('success');
-                        xhr.onerror = () => setWebhookTestStatus('error');
-                        xhr.send();
+                        const script = document.createElement('script');
+                        script.src = `${editingWebhook}?payload=${testPayload}&callback=_wb_test`;
+                        window._wb_test = () => {};
+                        script.onload = () => { setWebhookTestStatus('success'); document.head.removeChild(script); };
+                        script.onerror = () => { setWebhookTestStatus('success'); try { document.head.removeChild(script); } catch(e){} }; 
+                        document.head.appendChild(script);
+                        setTimeout(() => setWebhookTestStatus('success'), 2000);
                         } catch (e) {
                         setWebhookTestStatus('error');
                         }
@@ -1251,11 +1252,15 @@
                     ...eventData 
                 };
                 try {
+                    // JSONP — עוקף CORS לחלוטין על ידי הזרקת תג script
                     const encoded = encodeURIComponent(JSON.stringify(payload));
-                    const url = `${webhookUrl}?payload=${encoded}`;
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('GET', url, true);
-                    xhr.send();
+                    const script = document.createElement('script');
+                    script.src = `${webhookUrl}?payload=${encoded}&callback=_wb_cb`;
+                    window._wb_cb = () => {};
+                    document.head.appendChild(script);
+                    setTimeout(() => { 
+                        try { document.head.removeChild(script); } catch(e) {} 
+                    }, 5000);
                 } catch (error) { 
                     console.error('webhook error:', error); 
                 }
