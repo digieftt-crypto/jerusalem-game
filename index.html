@@ -575,9 +575,13 @@
                         if (!editingWebhook || editingWebhook.trim() === '') { setWebhookTestStatus('error'); return; }
                         setWebhookTestStatus('testing');
                         try {
-                        const testPayload = encodeURIComponent(JSON.stringify({ event: 'connection_test', message: 'בדיקת חיבור', timestamp: new Date().toISOString() }));
-                        await fetch(`${editingWebhook}?payload=${testPayload}`, { method: 'GET', mode: 'no-cors' });
-                        setWebhookTestStatus('success');
+                        const testPayload = encodeURIComponent(JSON.stringify({ event: 'connection_test', timestamp: new Date().toISOString() }));
+                        const url = `${editingWebhook}?payload=${testPayload}`;
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('GET', url, true);
+                        xhr.onload = () => setWebhookTestStatus('success');
+                        xhr.onerror = () => setWebhookTestStatus('error');
+                        xhr.send();
                         } catch (e) {
                         setWebhookTestStatus('error');
                         }
@@ -1237,7 +1241,7 @@
                 '5': { sheetName: 'תחנה 5 - איחוד העיר', weight: 0.25, type: 'quiz' },
             };
 
-            const sendDataToWebhook = async (eventType, eventData) => {
+            const sendDataToWebhook = (eventType, eventData) => {
                 if (!webhookUrl || typeof webhookUrl !== 'string' || webhookUrl.trim() === '') return;
                 const payload = { 
                     event: eventType, 
@@ -1248,7 +1252,10 @@
                 };
                 try {
                     const encoded = encodeURIComponent(JSON.stringify(payload));
-                    await fetch(`${webhookUrl}?payload=${encoded}`, { method: 'GET', mode: 'no-cors' });
+                    const url = `${webhookUrl}?payload=${encoded}`;
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', url, true);
+                    xhr.send();
                 } catch (error) { 
                     console.error('webhook error:', error); 
                 }
