@@ -576,9 +576,7 @@
                         setWebhookTestStatus('testing');
                         try {
                         const testPayload = encodeURIComponent(JSON.stringify({ event: 'connection_test', message: 'בדיקת חיבור', timestamp: new Date().toISOString() }));
-                        new Image().src = `${editingWebhook}?payload=${testPayload}`;
-                        // Image תמיד "מצליח" — מחכים רגע ומציגים הצלחה
-                        await new Promise(r => setTimeout(r, 1500));
+                        await fetch(`${editingWebhook}?payload=${testPayload}`, { method: 'GET', mode: 'no-cors' });
                         setWebhookTestStatus('success');
                         } catch (e) {
                         setWebhookTestStatus('error');
@@ -1250,12 +1248,9 @@
                 };
                 try {
                     const encoded = encodeURIComponent(JSON.stringify(payload));
-                    const fullUrl = `${webhookUrl}?payload=${encoded}`;
-                    console.log('📤 שולח webhook:', eventType, '| אורך:', fullUrl.length);
-                    // שימוש ב-Image במקום fetch — עוקף CORS לחלוטין
-                    new Image().src = fullUrl;
+                    await fetch(`${webhookUrl}?payload=${encoded}`, { method: 'GET', mode: 'no-cors' });
                 } catch (error) { 
-                    console.error('❌ שגיאה:', error); 
+                    console.error('webhook error:', error); 
                 }
             };
 
